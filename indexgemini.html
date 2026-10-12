@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-900 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Demográfico - Cd. Juárez</title>
+    <!-- Tailwind CSS para estilizado rápido y moderno -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Iconos Phosphor para la barra de herramientas y controles -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        /* Ajuste personalizado para el lienzo del mapa */
+        #map-container {
+            height: calc(100vh - 64px);
+        }
+        /* Transición suave para el panel colapsable */
+        .sidebar-transition {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body class="h-full overflow-hidden flex flex-col font-sans select-none">
+
+    <!-- 1. NAVBAR SUPERIOR -->
+    <header class="h-16 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-6 z-30 shadow-md">
+        <div class="flex items-center gap-3">
+            <button id="btn-toggle-sidebar" class="p-2 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-slate-100 transition-colors" title="Alternar panel lateral">
+                <i class="ph ph-list text-2xl"></i>
+            </button>
+            <div>
+                <h1 class="text-lg font-bold tracking-tight text-white">Dashboard Demográfico</h1>
+                <p class="text-xs text-emerald-400 font-medium tracking-wide">DISEÑO URBANO Y DEL PAISAJE</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <button id="btn-open-info" class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-600 text-xs font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-all">
+                <i class="ph ph-info text-base"></i> Fuente y Créditos
+            </button>
+        </div>
+    </header>
+
+    <!-- CONTENEDOR PRINCIPAL -->
+    <div class="flex-1 flex relative overflow-hidden">
+
+        <!-- 2. PANEL LATERAL IZQUIERDO (COLAPSABLE) -->
+        <aside id="sidebar" class="sidebar-transition w-80 h-full bg-slate-800 border-r border-slate-700 flex flex-col z-20 shadow-xl shrink-0">
+            <!-- Selector de Temas y Variables -->
+            <div class="p-5 border-b border-slate-700 flex flex-col gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Seleccionar Tema</label>
+                    <div class="relative">
+                        <select class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer appearance-none">
+                            <option>Demografía Básica</option>
+                            <option>Educación y Empleo</option>
+                            <option>Características de la Vivienda</option>
+                        </select>
+                        <i class="ph ph-caret-down absolute right-3 top-3 text-slate-400 pointer-events-none"></i>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Variable Censal</label>
+                    <div class="relative">
+                        <select class="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors cursor-pointer appearance-none">
+                            <option>Población Total (PobTot)</option>
+                            <option>Población Femenina</option>
+                            <option>Población Masculina</option>
+                            <option>Densidad por Manzana</option>
+                        </select>
+                        <i class="ph ph-caret-down absolute right-3 top-3 text-slate-400 pointer-events-none"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controles del Radio de Análisis -->
+            <div class="p-5 border-b border-slate-700 bg-slate-800/50">
+                <div class="flex items-center justify-between mb-2">
+                    <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Radio de análisis</label>
+                    <span id="radio-value" class="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">1.0 km</span>
+                </div>
+                <input id="radio-slider" type="range" min="100" max="5000" step="50" value="1000" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                <div class="flex justify-between text-[10px] text-slate-500 mt-1.5 font-medium">
+                    <span>100 m</span>
+                    <span>2.5 km</span>
+                    <span>5.0 km</span>
+                </div>
+            </div>
+
+            <!-- Panel de Resultados / Gráficos -->
+            <div class="flex-1 overflow-y-auto p-5 space-y-6">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-bold text-slate-200 uppercase tracking-wide">Análisis Demográfico</h3>
+                    <button class="text-xs font-medium text-slate-400 hover:text-rose-400 flex items-center gap-1 transition-colors" title="Limpiar selección">
+                        <i class="ph ph-trash"></i> Limpiar
+                    </button>
+                </div>
+
+                <!-- Estado Vacío / Skeleton Loader Activo por defecto -->
+                <div id="analysis-empty-state" class="space-y-6">
+                    <!-- Contenedor Gráfico 1 -->
+                    <div class="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 space-y-3">
+                        <div class="h-4 bg-slate-700 rounded w-1/3 animate-pulse"></div>
+                        <div class="flex items-end justify-center gap-4 h-32 pt-4">
+                            <div class="w-12 bg-slate-800 border border-slate-700 rounded-t-md h-24 animate-pulse"></div>
+                            <div class="w-12 bg-slate-800 border border-slate-700 rounded-t-md h-28 animate-pulse"></div>
+                        </div>
+                        <p class="text-center text-xs text-slate-500 italic pt-2">Selecciona una zona en el mapa para cargar los datos por sexo</p>
+                    </div>
+
+                    <!-- Contenedor Gráfico 2 (Pirámide) -->
+                    <div class="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 space-y-3">
+                        <div class="h-4 bg-slate-700 rounded w-1/2 animate-pulse"></div>
+                        <div class="space-y-2 pt-2">
+                            <div class="h-3 bg-slate-800 rounded w-full animate-pulse"></div>
+                            <div class="h-3 bg-slate-800 rounded w-5/6 animate-pulse mx-auto"></div>
+                            <div class="h-3 bg-slate-800 rounded w-4/5 animate-pulse mx-auto"></div>
+                            <div class="h-3 bg-slate-800 rounded w-11/12 animate-pulse mx-auto"></div>
+                        </div>
+                        <p class="text-center text-xs text-slate-500 italic pt-2">Pirámide de edad y sexo</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 3. ÁREA DEL MAPA -->
+        <main class="flex-1 h-full bg-slate-950 relative" id="map-container">
+            
+            <!-- CONTENEDOR SIMULADO DEL LIENZO MAPBOX/LEAFLET -->
+            <div class="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-40 flex items-center justify-center pointer-events-none">
+                <span class="text-slate-700 font-mono text-xs tracking-widest uppercase">Lienzo Cartográfico (Cd. Juárez)</span>
+            </div>
+
+            <!-- BARRA DE HERRAMIENTAS FLOTANTE (SELECCIÓN) -->
+            <div class="absolute top-4 left-4 bg-slate-800/95 backdrop-blur border border-slate-700 rounded-xl p-1.5 shadow-2xl flex flex-col gap-1 z-10">
+                <button class="tool-btn group relative p-2.5 rounded-lg bg-emerald-600 text-white shadow-lg transition-all" data-mode="manzana">
+                    <i class="ph ph-cursor-click text-xl"></i>
+                    <span class="absolute left-14 top-1.5 scale-0 bg-slate-900 text-slate-200 text-xs px-2.5 py-1 rounded shadow-md group-hover:scale-100 transition-all whitespace-nowrap z-50">Seleccionar Manzana</span>
+                </button>
+                <button class="tool-btn group relative p-2.5 rounded-lg text-slate-400 hover:bg-slate-700/70 hover:text-slate-100 transition-all" data-mode="radio">
+                    <i class="ph ph-circle-marquee text-xl"></i>
+                    <span class="absolute left-14 top-1.5 scale-0 bg-slate-900 text-slate-200 text-xs px-2.5 py-1 rounded shadow-md group-hover:scale-100 transition-all whitespace-nowrap z-50">Seleccionar por Radio</span>
+                </button>
+            </div>
+
+            <!-- CONTROL DE CAPAS / ESTILOS FLOTANTE -->
+            <div class="absolute top-4 right-4 bg-slate-800/95 backdrop-blur border border-slate-700 rounded-xl p-2 shadow-2xl z-10 flex items-center gap-3">
+                <!-- Capas base -->
+                <div class="flex bg-slate-900 p-0.5 rounded-lg border border-slate-700">
+                    <button class="px-3 py-1 text-xs font-semibold rounded-md bg-slate-700 text-white shadow" title="Estilo Oscuro">Oscuro</button>
+                    <button class="px-3 py-1 text-xs font-medium rounded-md text-slate-400 hover:text-slate-200" title="Estilo Claro">Claro</button>
+                    <button class="px-3 py-1 text-xs font-medium rounded-md text-slate-400 hover:text-slate-200" title="Vista Satelital">Satélite</button>
+                </div>
+                
+                <label class="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-300">
+                    <input type="checkbox" checked class="sr-only peer">
+                    <div class="w-8 h-4 bg-slate-700 rounded-full peer peer-focus:ring-0 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-slate-400 after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500 peer-checked:after:bg-white relative"></div>
+                    Manzanas
+                </label>
+            </div>
+
+            <!-- INDICADOR DE MODO ACTIVO -->
+            <div id="mode-indicator" class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur border border-slate-700 px-4 py-2 rounded-full text-xs font-medium text-slate-300 shadow-xl flex items-center gap-2 z-10">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                <span>Modo Manzana Activo: Toca una manzana urbana en el mapa</span>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- MODAL DE INFORMACIÓN Y CRÉDITOS -->
+    <div id="modal-info" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-xl w-full shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div class="p-6 border-b border-slate-700 flex items-center justify-between">
+                <div class="flex items-center gap-2 text-emerald-400">
+                    <i class="ph ph-file-text text-2xl"></i>
+                    <h2 class="text-lg font-bold text-white">Información y Marco Metodológico</h2>
+                </div>
+                <button id="btn-close-info" class="p-1 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-slate-100 transition-colors">
+                    <i class="ph ph-x text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4 text-sm text-slate-300 overflow-y-auto max-h-[60vh]">
+                <p><strong>Fuente primordial:</strong> Instituto Nacional de Estadística y Geografía (INEGI), Censo de Población y Vivienda 2020.</p>
+                <div class="bg-slate-900/50 border border-slate-700/60 p-4 rounded-xl text-xs space-y-2 text-slate-400 leading-relaxed">
+                    <p class="font-semibold text-slate-300">Aviso Legal y Limitación de Responsabilidad:</p>
+                    <p>Los análisis geoespaciales por buffer, radios de afectación y las sumatorias resultantes calculadas de forma dinámica en esta plataforma web corresponden a estimaciones de diseño propios desarrollados por <strong>Ricardo P.</strong>.</p>
+                    <p>Dichas métricas e interpretaciones territoriales carecen de caracter oficial y no cuentan con el respaldo ni patrocinio institucional del INEGI. El usuario acepta variaciones matemáticas por redondeos analíticos de la geometría espacial.</p>
+                </div>
+                <p class="text-xs text-slate-500">Condiciones de uso: Datos bajo los Términos de Libre Uso de la información del Estado Mexicano.</p>
+            </div>
+            <div class="p-4 bg-slate-900/40 border-t border-slate-700 flex justify-end">
+                <button id="btn-close-info-ok" class="bg-slate-700 hover:bg-slate-600 text-white font-medium text-xs px-4 py-2 rounded-lg transition-colors">
+                    Entendido
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Lógica estructural del Colapsable
+        const sidebar = document.getElementById('sidebar');
+        const toggleSidebarBtn = document.getElementById('btn-toggle-sidebar');
+        
+        toggleSidebarBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('-translate-x-full');
+            if (sidebar.classList.contains('-translate-x-full')) {
+                sidebar.style.marginLeft = `-${sidebar.offsetWidth}px`;
+            } else {
+                sidebar.style.marginLeft = '0px';
+            }
+        });
+
+        // Lógica del Slider Dinámico de Radio
+        const slider = document.getElementById('radio-slider');
+        const radioValue = document.getElementById('radio-value');
+        
+        slider.addEventListener('input', (e) => {
+            const val = (e.target.value / 1000).toFixed(2);
+            radioValue.innerText = `${val} km`;
+        });
+
+        // Lógica de Microinteracciones para Barra de Herramientas Flotante
+        const toolButtons = document.querySelectorAll('.tool-btn');
+        const modeIndicator = document.getElementById('mode-indicator');
+
+        toolButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                toolButtons.forEach(b => b.className = 'tool-btn group relative p-2.5 rounded-lg text-slate-400 hover:bg-slate-700/70 hover:text-slate-100 transition-all');
+                btn.className = 'tool-btn group relative p-2.5 rounded-lg bg-emerald-600 text-white shadow-lg transition-all';
+                
+                const mode = btn.getAttribute('data-mode');
+                if (mode === 'manzana') {
+                    modeIndicator.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span><span>Modo Manzana Activo: Toca una manzana urbana en el mapa</span>';
+                } else {
+                    modeIndicator.innerHTML = '<span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span><span>Modo Radio Activo: Haz un clic en el mapa para trazar el círculo</span>';
+                }
+            });
+        });
+
+        // Lógica del Modal de Información
+        const modal = document.getElementById('modal-info');
+        const openModalBtn = document.getElementById('btn-open-info');
+        const closeModalBtns = [document.getElementById('btn-close-info'), document.getElementById('btn-close-info-ok')];
+
+        openModalBtn.addEventListener('click', () => modal.classList.remove('hidden'));
+        closeModalBtns.forEach(btn => btn.addEventListener('click', () => modal.classList.add('hidden')));
+    </script>
+</body>
+</html>
