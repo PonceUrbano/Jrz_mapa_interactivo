@@ -283,8 +283,6 @@
     #mode-indicator { font-size:11px; padding:7px 12px; }
     #panel-analisis-der { top:auto; left:12px; right:12px; bottom:56px; width:auto; max-width:none; max-height:46%; }
   }
-  .puntos-escuelas { display:inline-flex; gap:3px; }
-  .puntos-escuelas i { width:9px; height:9px; border-radius:50%; border:1px solid #fff; box-shadow:0 0 0 1px var(--linea-fuerte); }
 </style>
 </head>
 <body>
@@ -382,12 +380,6 @@
         <input type="checkbox" id="chk-manzanas" />
         <span class="pista"></span>
         Manzanas
-      </label>
-      <label class="interruptor" title="Preescolar (amarillo), secundaria (rojo), superior (morado)">
-        <input type="checkbox" id="chk-escuelas" checked />
-        <span class="pista"></span>
-        Escuelas
-        <span class="puntos-escuelas" aria-hidden="true"><i style="background:#f2a900"></i><i style="background:#d1495b"></i><i style="background:#6f3fa0"></i></span>
       </label>
     </div>
 
@@ -578,7 +570,7 @@ function actualizarEstadoBotonesEstilo() {
 function aplicarEstiloMapa() {
   const estilo = modoMapa === "claro" ? ESTILO_CLARO : modoMapa === "satelite" ? ESTILO_SATELITE : ESTILO_OSCURO;
   sincronizarModoMapa();
-  map.setStyle(estilo);
+  map.setStyle(estilo, { diff: false });   // reemplazo completo: así siempre se dispara "style.load" y se rehacen las capas
   actualizarEstadoBotonesEstilo();
 }
 
@@ -700,7 +692,13 @@ map.on("load", async () => {
 
     // Primera capa de tipo "symbol" del estilo base (nombres de ciudades, calles, etc.).
     // Insertamos nuestras capas justo antes, para que las etiquetas queden por encima.
-    const primeraEtiqueta = map.getStyle().layers.find(l => l.type === "symbol");
+    // Se insertan justo antes del bloque de etiquetas que va AL FINAL del estilo base, es decir,
+    // por encima de calles, edificios y límites (antes quedaban debajo de las calles del mapa claro/oscuro).
+    const fuentesPropias = ["manzanas", "circulo-busqueda", "manzana-seleccionada", "colonias-src", "parques-src", "escuelas-src", "transporte-rutas-src", "transporte-paradas-src", "colonia-sel-src"];
+    const capasBase = map.getStyle().layers.filter(l => fuentesPropias.indexOf(l.source) < 0);
+    let ultimaNoEtiqueta = -1;
+    capasBase.forEach((l, i) => { if (l.type !== "symbol") ultimaNoEtiqueta = i; });
+    const primeraEtiqueta = capasBase.slice(ultimaNoEtiqueta + 1).find(l => l.type === "symbol");
     const antesDe = primeraEtiqueta ? primeraEtiqueta.id : undefined;
 
   // Cada variable tiene su propia rampa de 5 colores (bajo -> alto).
@@ -865,6 +863,19 @@ map.on("load", async () => {
       }, 0);
     }
   });
+
+  // Red de seguridad: si tras cambiar Oscuro/Claro/Satélite faltan las capas de radio o de
+  // selección (el estilo nuevo las borró y nadie las rehízo), se vuelven a crear aquí.
+  let reconstruyendo = false;
+  function asegurarCapasPrincipales() {
+    if (reconstruyendo || !geojsonData || !map.getStyle()) return;
+    if (map.getSource("circulo-busqueda") && map.getSource("manzana-seleccionada") && map.getLayer("seleccion-stroke")) return;
+    reconstruyendo = true;
+    try { agregarCapasDelMapa(); }
+    catch (error) { /* el estilo aún se está cargando: se reintenta en el siguiente evento */ }
+    finally { reconstruyendo = false; }
+  }
+  ["styledata", "idle"].forEach(ev => map.on(ev, asegurarCapasPrincipales));
 
   const bounds = new maplibregl.LngLatBounds();
   geojsonData.features.forEach(f => {
@@ -1296,7 +1307,7 @@ map.on("load", async () => {
 })();
 </script>
 
-   <script src="escuelas.js"></script>
+   <!-- escuelas.js desactivado: las escuelas ahora las dibuja capas_nuevas.js (menú Capas). Borra esta línea si todo se ve bien. -->
    <script src="NUEVAS%20CAPAS%20DASHBOARD/capas_nuevas.js"></script>
 
 </body>

@@ -5,6 +5,7 @@
 // - Parques: relleno verde claro; clic = ventana del parque.
 // - Escuelas: puntos por nivel (preescolar, secundaria, superior); clic = ventana de la escuela.
 // - Transporte público: rutas (BRT-1/2/3 gruesas, resto en gris) y paradas; clic = ventana con las rutas o la parada.
+// - Entorno en el radio: escuelas, áreas verdes por habitante y transporte dentro del círculo de análisis.
 // Rutas: se prueba primero la carpeta "NUEVAS CAPAS DASHBOARD/" y luego la raíz.
 // =====================================================================
 (function () {
@@ -32,20 +33,22 @@
     }
   };
   var NIVELES = {
-    PREESCOLAR: { nombre: "Preescolar", color: "#f2a900" },
-    SECUNDARIA: { nombre: "Secundaria", color: "#d1495b" },
-    SUPERIOR:   { nombre: "Superior",   color: "#6f3fa0" }
+    "PREESCOLAR":     { nombre: "Preescolar",     color: "#f2a900", forma: "circulo" },
+    "PRIMARIA":       { nombre: "Primaria",       color: "#2563eb", forma: "rombo" },
+    "SECUNDARIA":     { nombre: "Secundaria",     color: "#d1495b", forma: "cuadrado" },
+    "MEDIA SUPERIOR": { nombre: "Media superior", color: "#0f9fb5", forma: "hexagono" },
+    "SUPERIOR":       { nombre: "Superior",       color: "#6f3fa0", forma: "triangulo" }
   };
   CAPAS.escuelas = {
     archivo: "escuelas_2025-2026.geojson",
     fuente: "escuelas-src",
     relleno: "escuelas-pts",
     visible: false,
-    color: "linear-gradient(135deg,#f2a900 0 33%,#d1495b 33% 66%,#6f3fa0 66%)",
+    color: "linear-gradient(135deg,#f2a900 0 20%,#2563eb 20% 40%,#d1495b 40% 60%,#0f9fb5 60% 80%,#6f3fa0 80%)",
     etiqueta: "Escuelas"
   };
   // Transporte: UNA fila en el menú que controla rutas + paradas (dos archivos).
-  var COLORES_RUTA = { "BRT-1": "#e63946", "BRT-2": "#2a9d8f", "BRT-3": "#f4a261" };
+  var COLORES_RUTA = { "BRT-1": "#7ab800", "BRT-2": "#2fa6e0", "BRT-3": "#c8102e" };  // como en el mapa oficial de JuárezBús
   var COLOR_RUTA_OTRA = "#94a3b8";
   CAPAS.transporte = {
     archivo: "transporte_rutas.geojson",
@@ -53,17 +56,22 @@
     fuente: "transporte-rutas-src",
     fuenteParadas: "transporte-paradas-src",
     visible: false,
-    color: "linear-gradient(135deg,#e63946 0 33%,#2a9d8f 33% 66%,#f4a261 66%)",
+    color: "linear-gradient(135deg,#7ab800 0 33%,#2fa6e0 33% 66%,#c8102e 66%)",
     etiqueta: "Transporte público"
   };
+  // Camellones y glorietas: se dibujan como capa aparte y NO cuentan como área verde por habitante.
+  var CLASIF_VIAL = ["CAMELLON", "GLORIETA"];
+  var FILTRO_VIAL = ["in", ["get", "clasif"], ["literal", CLASIF_VIAL]];
+  CAPAS.camellones = { fuente: "parques-src", relleno: "camellones-fill", visible: false, color: "#f97316", etiqueta: "Camellones y glorietas" };
   var SEL = { fuente: "colonia-sel-src", linea: "colonia-sel-line" };
   // Orden de las capas de arriba (se ve encima) a abajo. El usuario lo cambia con las flechas del menú.
-  var ordenCapas = ["escuelas", "transporte", "parques", "manzanas", "colonias"];
+  var ordenCapas = ["escuelas", "transporte", "parques", "camellones", "manzanas", "colonias"];
   // Capas reales de MapLibre que pertenecen a cada grupo del menú.
   var GRUPOS = {
     manzanas: ["manzanas-fill", "manzanas-hit", "manzanas-linea"],
     colonias: ["colonias-fill"],
     parques:  ["parques-fill", "parques-line"],
+    camellones: ["camellones-fill", "camellones-line"],
     escuelas: ["escuelas-pts"],
     transporte: ["transporte-rutas-otras", "transporte-rutas-brt", "transporte-paradas"]
   };
@@ -162,7 +170,7 @@
     apagarTodas.className = "btn-texto";
     apagarTodas.textContent = "Apagar todas";
     apagarTodas.addEventListener("click", function () {
-      ["chk-manzanas", "chk-colonias", "chk-parques", "chk-escuelas-capa", "chk-transporte"].forEach(function (id) {
+      ["chk-manzanas", "chk-colonias", "chk-parques", "chk-camellones", "chk-escuelas-capa", "chk-transporte"].forEach(function (id) {
         var c = document.getElementById(id);
         if (c && c.checked) c.click();
       });
@@ -185,10 +193,11 @@
       manzanas: labelManz,
       colonias: filaInterruptor("chk-colonias", CAPAS.colonias.etiqueta, CAPAS.colonias.color, CAPAS.colonias.visible),
       parques: filaInterruptor("chk-parques", CAPAS.parques.etiqueta, CAPAS.parques.color, CAPAS.parques.visible),
+      camellones: filaInterruptor("chk-camellones", CAPAS.camellones.etiqueta, CAPAS.camellones.color, CAPAS.camellones.visible),
       escuelas: filaInterruptor("chk-escuelas-capa", CAPAS.escuelas.etiqueta, CAPAS.escuelas.color, CAPAS.escuelas.visible),
       transporte: filaInterruptor("chk-transporte", CAPAS.transporte.etiqueta, CAPAS.transporte.color, CAPAS.transporte.visible)
     };
-    var nombres = { manzanas: "Manzanas", colonias: "Colonias", parques: "Parques y áreas verdes", escuelas: "Escuelas", transporte: "Transporte público" };
+    var nombres = { manzanas: "Manzanas", colonias: "Colonias", parques: "Parques y áreas verdes", camellones: "Camellones y glorietas", escuelas: "Escuelas", transporte: "Transporte público" };
     var iconoAsa = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
     var filas = {};
 
@@ -277,7 +286,7 @@
 
     var pie = document.createElement("p");
     pie.className = "ayuda-capas";
-    pie.textContent = "Arrastra ⋮⋮ para ordenar: la de arriba se ve encima.";
+    pie.textContent = "Arrastra ⋮⋮ para ordenar las capas.";
     panel.appendChild(pie);
     barra.appendChild(wrap);
 
@@ -299,6 +308,9 @@
     });
     document.getElementById("chk-parques").addEventListener("change", function (e) {
       alternar("parques", e.target.checked);
+    });
+    document.getElementById("chk-camellones").addEventListener("change", function (e) {
+      alternar("camellones", e.target.checked);
     });
     document.getElementById("chk-escuelas-capa").addEventListener("change", function (e) {
       alternar("escuelas", e.target.checked);
@@ -370,8 +382,41 @@
 
   // -------------------------------------------------------------- Capas
   function antesDeEtiquetas() {
-    var l = map.getStyle().layers.find(function (x) { return x.type === "symbol"; });
+    // Antes del bloque de etiquetas del final del estilo base (por encima de calles y edificios).
+    var propias = ["manzanas", "circulo-busqueda", "manzana-seleccionada", "colonias-src", "parques-src", "escuelas-src", "transporte-rutas-src", "transporte-paradas-src", "colonia-sel-src"];
+    var base = map.getStyle().layers.filter(function (x) { return propias.indexOf(x.source) < 0; });
+    var ult = -1;
+    base.forEach(function (x, i) { if (x.type !== "symbol") ult = i; });
+    var l = base.slice(ult + 1).find(function (x) { return x.type === "symbol"; });
     return l ? l.id : undefined;
+  }
+
+  // Dibuja los iconos de escuelas con canvas y los registra en el mapa
+  // (hay que repetirlo tras cada cambio de estilo base, que borra las imágenes).
+  function registrarIconosEscuelas() {
+    var niveles = Object.keys(NIVELES).concat(["otro"]);
+    niveles.forEach(function (k) {
+      var id = "esc-" + k;
+      if (map.hasImage(id)) return;
+      var forma = NIVELES[k] ? NIVELES[k].forma : "circulo";
+      var color = NIVELES[k] ? NIVELES[k].color : "#888888";
+      var T = 44, m = T / 2, c = document.createElement("canvas");
+      c.width = c.height = T;
+      var g = c.getContext("2d");
+      g.beginPath();
+      if (forma === "circulo") g.arc(m, m, 14, 0, Math.PI * 2);
+      else if (forma === "cuadrado") g.rect(m - 12, m - 12, 24, 24);
+      else if (forma === "rombo") { g.moveTo(m, m - 17); g.lineTo(m + 17, m); g.lineTo(m, m + 17); g.lineTo(m - 17, m); g.closePath(); }
+      else if (forma === "hexagono") { for (var q = 0; q < 6; q++) { var an = Math.PI / 3 * q + Math.PI / 6; g.lineTo(m + 16 * Math.cos(an), m + 16 * Math.sin(an)); } g.closePath(); }
+      else { g.moveTo(m, 6); g.lineTo(T - 6, T - 8); g.lineTo(6, T - 8); g.closePath(); }
+      g.fillStyle = color;
+      g.fill();
+      g.lineWidth = 3.5;
+      g.strokeStyle = "#ffffff";
+      g.lineJoin = "round";
+      g.stroke();
+      map.addImage(id, g.getImageData(0, 0, T, T), { pixelRatio: 2 });
+    });
   }
 
   function asegurarCapas() {
@@ -396,32 +441,48 @@
     }
     if (!map.getLayer(CAPAS.parques.relleno)) {
       map.addLayer({
-        id: CAPAS.parques.relleno, type: "fill", source: CAPAS.parques.fuente,
+        id: CAPAS.parques.relleno, type: "fill", source: CAPAS.parques.fuente, filter: ["!", FILTRO_VIAL],
         layout: { visibility: CAPAS.parques.visible ? "visible" : "none" },
         paint: { "fill-color": "#86efac", "fill-opacity": 0.6 }
       }, antes);
       map.addLayer({
-        id: CAPAS.parques.linea, type: "line", source: CAPAS.parques.fuente,
+        id: CAPAS.parques.linea, type: "line", source: CAPAS.parques.fuente, filter: ["!", FILTRO_VIAL],
         layout: { visibility: CAPAS.parques.visible ? "visible" : "none" },
         paint: { "line-color": "#16a34a", "line-width": 0.9, "line-opacity": 0.9 }
       }, antes);
     }
 
-    // Escuelas: puntos coloreados por nivel
+    // Camellones y glorietas (misma fuente que parques, solo esas clases)
+    if (!map.getLayer(CAPAS.camellones.relleno)) {
+      map.addLayer({
+        id: CAPAS.camellones.relleno, type: "fill", source: CAPAS.parques.fuente, filter: FILTRO_VIAL,
+        layout: { visibility: CAPAS.camellones.visible ? "visible" : "none" },
+        paint: { "fill-color": CAPAS.camellones.color, "fill-opacity": 0.85 }
+      }, antes);
+      // Los camellones son franjas angostas: un contorno más oscuro los hace visibles al alejar el zoom.
+      map.addLayer({
+        id: "camellones-line", type: "line", source: CAPAS.parques.fuente, filter: FILTRO_VIAL,
+        layout: { visibility: CAPAS.camellones.visible ? "visible" : "none" },
+        paint: { "line-color": "#9a3412", "line-opacity": 0.95,
+                 "line-width": ["interpolate", ["linear"], ["zoom"], 10, 0.8, 14, 1.4, 17, 2.2] }
+      }, antes);
+    }
+
+    // Escuelas: un símbolo distinto por nivel (círculo, cuadrado, triángulo)
+    registrarIconosEscuelas();
     if (!map.getSource(CAPAS.escuelas.fuente)) {
       map.addSource(CAPAS.escuelas.fuente, { type: "geojson", data: datos.escuelas || vacio });
     }
     if (!map.getLayer(CAPAS.escuelas.relleno)) {
       map.addLayer({
-        id: CAPAS.escuelas.relleno, type: "circle", source: CAPAS.escuelas.fuente,
-        layout: { visibility: CAPAS.escuelas.visible ? "visible" : "none" },
-        paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 2.5, 14, 5, 17, 8],
-          "circle-color": ["match", ["get", "NIVEL"],
-            "PREESCOLAR", NIVELES.PREESCOLAR.color, "SECUNDARIA", NIVELES.SECUNDARIA.color,
-            "SUPERIOR", NIVELES.SUPERIOR.color, "#888888"],
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": 1.2
+        id: CAPAS.escuelas.relleno, type: "symbol", source: CAPAS.escuelas.fuente,
+        layout: {
+          visibility: CAPAS.escuelas.visible ? "visible" : "none",
+          "icon-image": ["match", ["get", "NIVEL"]].concat(
+            Object.keys(NIVELES).reduce(function (a, k) { return a.concat([k, "esc-" + k]); }, []), ["esc-otro"]),
+          "icon-size": ["interpolate", ["linear"], ["zoom"], 10, 0.4, 14, 0.7, 17, 1],
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true
         }
       }, antes);
     }
@@ -506,7 +567,7 @@
     (GRUPOS[clave] || [CAPAS[clave].relleno, CAPAS[clave].linea]).forEach(function (id) {
       if (id && map.getLayer(id)) map.setLayoutProperty(id, "visibility", v);
     });
-    if (visible) cargar(clave);
+    if (visible) cargar(clave === "camellones" ? "parques" : clave);
     if (clave === "colonias" && !visible) limpiarColonia();
   }
 
@@ -577,7 +638,7 @@
     var nivel = NIVELES[p.NIVEL] || { nombre: p.NIVEL || "Sin dato", color: "#888888" };
     var tiene = function (v) { return v !== null && v !== undefined && v !== "" && isFinite(Number(v)); };
     var filas = "<dt>Nivel</dt><dd>" + esc(nivel.nombre) + "</dd>" +
-      "<dt>Turno</dt><dd>" + esc(p.Turno ? String(p.Turno).toLowerCase() : "Sin dato") + "</dd>" +
+      "<dt>Turno</dt><dd>" + esc((p.TURNO || p.Turno) ? String(p.TURNO || p.Turno).toLowerCase() : "Sin dato") + "</dd>" +
       (p.MODALIDAD ? "<dt>Modalidad</dt><dd>" + esc(p.MODALIDAD) + "</dd>" : "") +
       "<dt>Dirección</dt><dd>" + esc(p.DIRECCION || "Sin dato") + "</dd>";
     if (tiene(p.TALUMNOS)) {
@@ -612,10 +673,30 @@
     return fr.length ? { tipo: "ruta", fs: fr } : null;
   }
 
+  // Rutas a ≤ 40 m de una parada (para paradas del archivo sin dato de líneas).
+  function rutasCercanas(coord) {
+    if (!datos.transporte || !window.turf) return [];
+    var pt = turf.point(coord), vistos = {};
+    datos.transporte[0].features.forEach(function (f) {
+      var t = f.properties && f.properties.titulo;
+      if (!t) return;
+      try {
+        var cerca = turf.flatten(f).features.some(function (seg) {
+          return turf.pointToLineDistance(pt, seg, { units: "kilometers" }) <= 0.04;
+        });
+        if (cerca) vistos[t] = true;
+      } catch (err) { /* geometría rara: se omite */ }
+    });
+    return Object.keys(vistos).sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
+  }
+
   function popupParada(f) {
     var p = f.properties || {};
-    var html = "<h4><i style=\"background:#ffffff\"></i>" + esc(p.nombre || "Parada") + "</h4><dl>" +
-      "<dt>Líneas</dt><dd>" + esc(p.lineas || "Sin dato") + "</dd>" +
+    var cerca = p.lineas ? [] : rutasCercanas(f.geometry.coordinates);
+    var lineas = p.lineas ? esc(p.lineas)
+      : cerca.length ? esc(cerca.join(", ")) + " (rutas a menos de 40 m)" : "Sin dato";
+    var html = "<h4><i style=\"background:#ffffff\"></i>" + esc(p.nombre || "Parada sin nombre") + "</h4><dl>" +
+      "<dt>Líneas</dt><dd>" + lineas + "</dd>" +
       (p.red ? "<dt>Red</dt><dd>" + esc(p.red) + "</dd>" : "") + "</dl>";
     new maplibregl.Popup({ className: "popup-capa", maxWidth: "300px", closeOnClick: true })
       .setLngLat(f.geometry.coordinates).setHTML(html).addTo(map);
@@ -709,6 +790,10 @@
         if (k === "parques" && CAPAS.parques.visible && map.getLayer(CAPAS.parques.relleno)) {
           var fp = map.queryRenderedFeatures(e.point, { layers: [CAPAS.parques.relleno] })[0];
           if (fp) { bloquearSeleccionManzana(); popupParque(e, fp); return; }
+        } else if (k === "camellones" && CAPAS.camellones.visible && map.getLayer(CAPAS.camellones.relleno)) {
+          var cajaV = [[e.point.x - 4, e.point.y - 4], [e.point.x + 4, e.point.y + 4]];   // franjas angostas: se busca en ±4 px
+          var fv = map.queryRenderedFeatures(cajaV, { layers: [CAPAS.camellones.relleno, "camellones-line"] })[0];
+          if (fv) { bloquearSeleccionManzana(); popupParque(e, fv); return; }
         } else if (k === "transporte" && !modoRadio) {
           var ft = transporteEn(e.point);
           if (ft) {
@@ -724,11 +809,172 @@
     });
   }
 
+  // ------------------------------------------- Entorno dentro del radio
+  // Debajo de "Datos del radio" agrega: escuelas por nivel, áreas verdes por habitante
+  // y transporte público (paradas y rutas) dentro del círculo de análisis.
+  var REF_VERDE = 9;            // m² de área verde por habitante: referencia que suele citarse
+  var tokenEntorno = 0, temporizadorEntorno = null, cacheBB = {};
+  var contEntorno = null;
+
+  function asegurarDatos(clave) {
+    return new Promise(function (ok, fallo) {
+      var t0 = Date.now();
+      cargar(clave);
+      (function esperar() {
+        if (datos[clave]) return ok(datos[clave]);
+        if (Date.now() - t0 > 20000) return fallo(new Error("No se pudo cargar " + clave));
+        setTimeout(esperar, 150);
+      })();
+    });
+  }
+
+  // bbox de cada feature, calculado una sola vez
+  function bbDe(clave, lista, i) {
+    var c = cacheBB[clave] || (cacheBB[clave] = []);
+    if (!c[i]) c[i] = turf.bbox(lista[i]);
+    return c[i];
+  }
+  function cruzaCaja(a, b) { return !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3]); }
+
+  function filaE(etq, val) { return "<tr><td>" + etq + "</td><td>" + val + "</td></tr>"; }
+  function grupoE(t) { return '<tr class="grupo"><td colspan="2">' + t + "</td></tr>"; }
+
+  function pintarEntorno(html) {
+    if (contEntorno) contEntorno.innerHTML = html;
+  }
+  function limpiarEntorno() {
+    tokenEntorno++;
+    pintarEntorno("");
+    if (contEntorno) contEntorno.hidden = true;
+  }
+
+  function calcularEntorno() {
+    if (!contEntorno) return;
+    if (typeof ultimoClickLngLat === "undefined" || !ultimoClickLngLat || typeof radioMetros === "undefined") {
+      return limpiarEntorno();
+    }
+    var yo = ++tokenEntorno;
+    var lng = ultimoClickLngLat.lng, lat = ultimoClickLngLat.lat, r = radioMetros;
+    contEntorno.hidden = false;
+    pintarEntorno('<p class="resumen">Calculando el entorno…</p>');
+
+    Promise.all(["escuelas", "parques", "transporte"].map(asegurarDatos)).then(function () {
+      if (yo !== tokenEntorno) return;   // el radio cambió mientras cargaba
+      var centro = turf.point([lng, lat]);
+      var circulo = turf.buffer(centro, r / 1000, { units: "kilometers" });
+      var bb = turf.bbox(circulo);
+      var dentroDe = function (c) { return c[0] >= bb[0] && c[0] <= bb[2] && c[1] >= bb[1] && c[1] <= bb[3] && turf.booleanPointInPolygon(turf.point(c), circulo); };
+
+      // Población (manzanas cuyo centro cae dentro, igual que el análisis del radio)
+      var pob = 0;
+      if (typeof geojsonData !== "undefined" && geojsonData) {
+        geojsonData.features.forEach(function (f) {
+          var c = f.properties && f.properties.centroide;
+          if (c && dentroDe(c)) pob += Number(f.properties.POBTOT) || 0;
+        });
+      }
+
+      // Escuelas
+      var porNivel = { otro: 0 }, totEsc = 0, alumnos = 0, hayAlumnos = false;
+      Object.keys(NIVELES).forEach(function (k) { porNivel[k] = 0; });
+      datos.escuelas.features.forEach(function (f) {
+        if (!f.geometry || !dentroDe(f.geometry.coordinates)) return;
+        totEsc++;
+        var n = f.properties && f.properties.NIVEL;
+        porNivel[porNivel.hasOwnProperty(n) ? n : "otro"]++;
+        var a = Number(f.properties && f.properties.TALUMNOS);
+        if (isFinite(a) && f.properties.TALUMNOS !== null && f.properties.TALUMNOS !== "") { alumnos += a; hayAlumnos = true; }
+      });
+
+      // Áreas verdes (recortadas al círculo)
+      var m2 = 0, nParq = 0, m2Vial = 0;
+      datos.parques.features.forEach(function (f, i) {
+        if (!f.geometry || !cruzaCaja(bbDe("parques", datos.parques.features, i), bb)) return;
+        var area = 0;
+        try {
+          var x = turf.intersect(circulo, f);
+          if (x) area = turf.area(x);
+        } catch (err) {
+          var cc = turf.centroid(f).geometry.coordinates;      // si falla el recorte, se cuenta completo si su centro cae dentro
+          if (dentroDe(cc)) area = turf.area(f);
+        }
+        if (area > 0) {
+          if (CLASIF_VIAL.indexOf(f.properties && f.properties.clasif) >= 0) m2Vial += area;
+          else { m2 += area; nParq++; }
+        }
+      });
+
+      // Transporte: paradas y rutas
+      var paradas = 0, masCerca = Infinity;
+      datos.transporte[1].features.forEach(function (f) {
+        if (!f.geometry) return;
+        var c = f.geometry.coordinates;
+        var d = turf.distance(centro, turf.point(c), { units: "kilometers" }) * 1000;
+        if (d < masCerca) masCerca = d;
+        if (d <= r) paradas++;
+      });
+      var rutas = {}, lineas = {};
+      datos.transporte[0].features.forEach(function (f, i) {
+        if (!f.geometry || !cruzaCaja(bbDe("rutas", datos.transporte[0].features, i), bb)) return;
+        var cruza = false;
+        try { cruza = turf.booleanIntersects(circulo, f); } catch (err) { cruza = false; }
+        if (!cruza) return;
+        var p = f.properties || {};
+        rutas[p.clave || p.titulo] = true;
+        if (p.titulo) lineas[p.titulo] = true;
+      });
+      var nRutas = Object.keys(rutas).length;
+      var listaLineas = Object.keys(lineas).sort(function (a, b) { return a.localeCompare(b, "es", { numeric: true }); });
+      var lineasTxt = listaLineas.length > 14 ? listaLineas.slice(0, 14).join(", ") + "…" : listaLineas.join(", ");
+
+      var h = '<p class="rotulo-sec">Entorno en el radio</p><table class="tabla-datos">';
+      h += grupoE("Escuelas");
+      h += filaE("Total", num(totEsc));
+      Object.keys(NIVELES).forEach(function (k) { h += filaE(NIVELES[k].nombre, num(porNivel[k])); });
+      if (porNivel.otro) h += filaE("Otro nivel", num(porNivel.otro));
+      if (hayAlumnos) h += filaE("Alumnos", num(alumnos));
+      h += grupoE("Áreas verdes");
+      h += filaE("Parques y áreas verdes", num(nParq));
+      h += filaE("Superficie", num(m2) + " m²" + (m2 >= 10000 ? " (" + num(m2 / 10000, 2) + " ha)" : ""));
+      h += filaE("Por habitante", pob > 0 ? num(m2 / pob, 1) + " m²/hab" : "Sin población");
+      h += filaE("Referencia citada", REF_VERDE + " m²/hab");
+      if (m2Vial > 0) h += filaE("Camellones y glorietas", num(m2Vial) + " m²");
+      h += grupoE("Transporte público");
+      h += filaE("Paradas en el radio", num(paradas));
+      h += filaE("Parada más cercana", isFinite(masCerca) ? num(masCerca) + " m" : "Sin dato");
+      h += filaE("Rutas que pasan", num(nRutas));
+      if (lineasTxt) h += filaE("Líneas", esc(lineasTxt));
+      h += "</table>";
+      h += '<p class="menu-ayuda">Población: manzanas cuyo centro cae dentro del círculo. Áreas verdes recortadas al círculo; camellones y glorietas se muestran aparte y no entran en m²/hab. ' +
+           "La parada más cercana se mide en línea recta desde el centro.</p>";
+      pintarEntorno(h);
+    }).catch(function (err) {
+      if (yo !== tokenEntorno) return;
+      pintarEntorno('<p class="resumen">No se pudo calcular el entorno: ' + esc(err.message) + "</p>");
+    });
+  }
+
+  function activarEntorno() {
+    var tabla = document.getElementById("tabla-radio");
+    var resumen = document.getElementById("resumen-radio");
+    if (!tabla || !resumen || document.getElementById("entorno-radio")) return;
+    contEntorno = document.createElement("div");
+    contEntorno.id = "entorno-radio";
+    contEntorno.hidden = true;
+    tabla.parentNode.insertBefore(contEntorno, tabla.nextSibling);
+    // El análisis principal reescribe #resumen-radio cada vez que dibuja, mueve o limpia el radio.
+    new MutationObserver(function () {
+      clearTimeout(temporizadorEntorno);
+      temporizadorEntorno = setTimeout(calcularEntorno, 150);
+    }).observe(resumen, { childList: true, characterData: true, subtree: true });
+  }
+
   // --------------------------------------------------------------- Init
   esperarMapa(function () {
     inyectarCSS();
     construirMenu();
     activarClics();
+    activarEntorno();
 
     // Se vuelven a crear tras cualquier cambio de estilo base (Oscuro/Claro/Satélite)
     // y se reordenan cuando el código principal reconstruye las manzanas.
