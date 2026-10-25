@@ -25,7 +25,7 @@
       fuente: "parques-src",
       relleno: "parques-fill",
       linea: "parques-line",
-      visible: true,
+      visible: false,
       color: "#86efac",
       etiqueta: "Parques y áreas verdes"
     }
@@ -39,11 +39,20 @@
     archivo: "escuelas_2025-2026.geojson",
     fuente: "escuelas-src",
     relleno: "escuelas-pts",
-    visible: true,
+    visible: false,
     color: "linear-gradient(135deg,#f2a900 0 33%,#d1495b 33% 66%,#6f3fa0 66%)",
     etiqueta: "Escuelas"
   };
   var SEL = { fuente: "colonia-sel-src", linea: "colonia-sel-line" };
+  // Orden de las capas de arriba (se ve encima) a abajo. El usuario lo cambia con las flechas del menú.
+  var ordenCapas = ["escuelas", "parques", "manzanas", "colonias"];
+  // Capas reales de MapLibre que pertenecen a cada grupo del menú.
+  var GRUPOS = {
+    manzanas: ["manzanas-fill", "manzanas-hit", "manzanas-linea"],
+    colonias: ["colonias-fill"],
+    parques:  ["parques-fill", "parques-line"],
+    escuelas: ["escuelas-pts"]
+  };
   var datos = { colonias: null, parques: null, escuelas: null };
   var cargando = { colonias: false, parques: false, escuelas: false };
   var vacio = { type: "FeatureCollection", features: [] };
@@ -83,7 +92,22 @@
       ".popup-capa dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 10px}",
       ".popup-capa dt{color:var(--suave);font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;padding-top:2px}",
       ".popup-capa dd{margin:0;text-align:right;word-break:break-word;font-variant-numeric:tabular-nums}",
-      ".popup-capa .nota{margin:8px 0 0;font-size:10.5px;color:var(--tenue)}"
+      ".popup-capa .nota{margin:8px 0 0;font-size:10.5px;color:var(--tenue)}",
+      ".panel-capas{width:250px;max-width:calc(100vw - 32px);gap:8px}",
+      ".panel-capas .cab-capas{display:flex;align-items:center;justify-content:space-between;gap:8px}",
+      ".panel-capas .btn-texto{background:none;border:0;padding:2px 0;color:var(--acento);font-size:11.5px;font-weight:600;cursor:pointer}",
+      ".panel-capas .btn-texto:hover{text-decoration:underline}",
+      ".panel-capas .pie-capas{display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:1px solid var(--linea-fuerte)}",
+      ".lista-capas{display:flex;flex-direction:column;gap:2px}",
+      ".fila-capa{display:flex;align-items:center;gap:4px;position:relative;border-radius:6px;transition:transform .15s}",
+      ".fila-capa .interruptor{flex:1;min-width:0}",
+      ".asa-capa{flex:none;width:18px;height:28px;padding:0;border:0;border-radius:4px;background:none;color:var(--tenue);cursor:grab;touch-action:none;display:inline-flex;align-items:center;justify-content:center}",
+      ".asa-capa:hover{color:var(--texto)}",
+      ".asa-capa:focus-visible{outline:2px solid var(--acento)}",
+      ".asa-capa svg{width:14px;height:14px;fill:currentColor}",
+      ".fila-capa.arrastrando{transition:none;z-index:2;background:var(--superficie-2);box-shadow:var(--sombra)}",
+      ".fila-capa.arrastrando .asa-capa{cursor:grabbing}",
+      ".panel-capas .ayuda-capas{margin:0;font-size:11px;line-height:1.35;color:var(--tenue)}",
     ].join("\n");
     var st = document.createElement("style");
     st.textContent = css;
@@ -111,8 +135,28 @@
     wrap.innerHTML =
       '<button type="button" id="btn-capas" class="btn-capas" aria-haspopup="true" aria-expanded="false" aria-controls="panel-capas">Capas ' +
       '<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>' +
-      '<div id="panel-capas" class="panel-capas" hidden><p class="titulo-capas">Capas del mapa</p></div>';
+      '<div id="panel-capas" class="panel-capas" hidden><p class="titulo-capas">Selecciona capas</p></div>';
     var panel = wrap.querySelector("#panel-capas");
+
+    var titulo = panel.querySelector(".titulo-capas");
+    var cab = document.createElement("div");
+    cab.className = "cab-capas";
+    panel.insertBefore(cab, titulo);
+    cab.appendChild(titulo);
+    var apagarTodas = document.createElement("button");
+    apagarTodas.type = "button";
+    apagarTodas.className = "btn-texto";
+    apagarTodas.textContent = "Apagar todas";
+    apagarTodas.addEventListener("click", function () {
+      ["chk-manzanas", "chk-colonias", "chk-parques", "chk-escuelas-capa"].forEach(function (id) {
+        var c = document.getElementById(id);
+        if (c && c.checked) c.click();
+      });
+    });
+    cab.appendChild(apagarTodas);
+    var lista = document.createElement("div");
+    lista.className = "lista-capas";
+    panel.appendChild(lista);
 
     // La casilla "Manzanas" original se MUEVE aquí (conserva sus eventos).
     var chkManz = document.getElementById("chk-manzanas");
@@ -122,11 +166,104 @@
       m.className = "muestra";
       m.style.background = "#ec4c2d";
       labelManz.insertBefore(m, labelManz.children[1]);
-      panel.appendChild(labelManz);
     }
-    panel.appendChild(filaInterruptor("chk-colonias", CAPAS.colonias.etiqueta, CAPAS.colonias.color, CAPAS.colonias.visible));
-    panel.appendChild(filaInterruptor("chk-parques", CAPAS.parques.etiqueta, CAPAS.parques.color, CAPAS.parques.visible));
-    panel.appendChild(filaInterruptor("chk-escuelas-capa", CAPAS.escuelas.etiqueta, CAPAS.escuelas.color, CAPAS.escuelas.visible));
+    var interruptores = {
+      manzanas: labelManz,
+      colonias: filaInterruptor("chk-colonias", CAPAS.colonias.etiqueta, CAPAS.colonias.color, CAPAS.colonias.visible),
+      parques: filaInterruptor("chk-parques", CAPAS.parques.etiqueta, CAPAS.parques.color, CAPAS.parques.visible),
+      escuelas: filaInterruptor("chk-escuelas-capa", CAPAS.escuelas.etiqueta, CAPAS.escuelas.color, CAPAS.escuelas.visible)
+    };
+    var nombres = { manzanas: "Manzanas", colonias: "Colonias", parques: "Parques y áreas verdes", escuelas: "Escuelas" };
+    var iconoAsa = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
+    var filas = {};
+
+    function pintarLista() {
+      ordenCapas.forEach(function (k) { lista.appendChild(filas[k]); });
+    }
+    function moverCapa(k, dir) {
+      var i = ordenCapas.indexOf(k), j = i + dir;
+      if (j < 0 || j >= ordenCapas.length) return false;
+      ordenCapas.splice(i, 1);
+      ordenCapas.splice(j, 0, k);
+      pintarLista();
+      ordenar();
+      return true;
+    }
+
+    Object.keys(interruptores).forEach(function (k) {
+      var fila = document.createElement("div");
+      fila.className = "fila-capa";
+      fila.setAttribute("data-capa", k);
+
+      var asa = document.createElement("button");
+      asa.type = "button";
+      asa.className = "asa-capa";
+      asa.title = "Arrastra para cambiar el orden";
+      asa.setAttribute("aria-label", "Mover la capa " + nombres[k] + ": arrastra, o usa las flechas arriba y abajo");
+      asa.innerHTML = iconoAsa;
+      fila.appendChild(asa);
+      if (interruptores[k]) fila.appendChild(interruptores[k]);
+      filas[k] = fila;
+
+      // Con teclado: flechas arriba/abajo sobre el asa.
+      asa.addEventListener("keydown", function (e) {
+        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+        e.preventDefault();
+        if (moverCapa(k, e.key === "ArrowUp" ? -1 : 1)) asa.focus();
+      });
+
+      // Con mouse o dedo: se arrastra la fila y las demás se apartan; al soltar se aplica el orden.
+      asa.addEventListener("pointerdown", function (ev) {
+        if (ev.button !== undefined && ev.button !== 0) return;
+        ev.preventDefault();
+        try { asa.setPointerCapture(ev.pointerId); } catch (err) { /* sin captura también funciona */ }
+        var items = ordenCapas.map(function (c) { return filas[c]; });
+        var desde = items.indexOf(fila), hasta = desde;
+        var paso = items.length > 1
+          ? items[1].getBoundingClientRect().top - items[0].getBoundingClientRect().top
+          : items[0].getBoundingClientRect().height;
+        var y0 = ev.clientY;
+        fila.classList.add("arrastrando");
+
+        function mover(e2) {
+          var dy = e2.clientY - y0;
+          dy = Math.max(-desde * paso, Math.min((items.length - 1 - desde) * paso, dy));
+          fila.style.transform = "translateY(" + dy + "px)";
+          hasta = Math.max(0, Math.min(items.length - 1, desde + Math.round(dy / paso)));
+          items.forEach(function (el, i) {
+            if (el === fila) return;
+            var d = 0;
+            if (desde < hasta && i > desde && i <= hasta) d = -paso;
+            if (desde > hasta && i >= hasta && i < desde) d = paso;
+            el.style.transform = d ? "translateY(" + d + "px)" : "";
+          });
+        }
+        function fin() {
+          asa.removeEventListener("pointermove", mover);
+          asa.removeEventListener("pointerup", fin);
+          asa.removeEventListener("pointercancel", fin);
+          items.forEach(function (el) { el.style.transition = "none"; el.style.transform = ""; });
+          fila.classList.remove("arrastrando");
+          if (hasta !== desde) {
+            ordenCapas.splice(desde, 1);
+            ordenCapas.splice(hasta, 0, k);
+            pintarLista();
+            ordenar();
+          }
+          void lista.offsetHeight;
+          items.forEach(function (el) { el.style.transition = ""; });
+        }
+        asa.addEventListener("pointermove", mover);
+        asa.addEventListener("pointerup", fin);
+        asa.addEventListener("pointercancel", fin);
+      });
+    });
+    pintarLista();
+
+    var pie = document.createElement("p");
+    pie.className = "ayuda-capas";
+    pie.textContent = "Arrastra ⋮⋮ para ordenar: la de arriba se ve encima.";
+    panel.appendChild(pie);
     barra.appendChild(wrap);
 
     var btn = wrap.querySelector("#btn-capas");
@@ -151,6 +288,10 @@
     document.getElementById("chk-escuelas-capa").addEventListener("change", function (e) {
       alternar("escuelas", e.target.checked);
     });
+
+    // Al entrar, el menú se muestra abierto para invitar a elegir capas.
+    panel.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
   }
 
   // ------------------------------------------------------------- Datos
@@ -271,23 +412,25 @@
     ordenar();
   }
 
-  // Orden: colonias (abajo) < manzanas < parques < colonia seleccionada < escuelas < radio/selección.
+  // Apila las capas según "ordenCapas" (el primero queda encima), siempre por debajo
+  // del círculo de radio y la manzana seleccionada. Solo mueve si algo está fuera de lugar,
+  // para no disparar eventos del estilo en bucle.
   function ordenar() {
-    var capas = function () { return map.getStyle().layers.map(function (l) { return l.id; }); };
-    var ids = capas();
-    var pos = function (id) { return ids.indexOf(id); };
-
-    if (pos("manzanas-fill") >= 0 && pos(CAPAS.colonias.relleno) > pos("manzanas-fill")) {
-      map.moveLayer(CAPAS.colonias.relleno, "manzanas-fill");
-      ids = capas();
-    }
-    var tope = pos("circulo-layer-fill") >= 0 ? "circulo-layer-fill" : undefined;
-    var arriba = [CAPAS.parques.relleno, CAPAS.parques.linea, SEL.linea, CAPAS.escuelas.relleno].filter(function (id) { return pos(id) >= 0; });
-    var ref = pos("manzanas-linea");
-    var mal = arriba.some(function (id, i) {
-      return (ref >= 0 && pos(id) < ref) || (tope && pos(id) > pos(tope)) || (i > 0 && pos(id) < pos(arriba[i - 1]));
+    if (!map.getStyle()) return;
+    var estilo = map.getStyle().layers.map(function (l) { return l.id; });
+    var deseado = [];
+    ordenCapas.slice().reverse().forEach(function (k) {
+      GRUPOS[k].forEach(function (id) { if (map.getLayer(id)) deseado.push(id); });
     });
-    if (mal) arriba.forEach(function (id) { map.moveLayer(id, tope); });
+    if (map.getLayer(SEL.linea)) deseado.push(SEL.linea);   // contorno de la colonia elegida, siempre visible
+    if (!deseado.length) return;
+    var tope = estilo.indexOf("circulo-layer-fill") >= 0 ? "circulo-layer-fill" : undefined;
+    var actual = estilo.filter(function (id) { return deseado.indexOf(id) >= 0; });
+    var igual = actual.length === deseado.length && actual.every(function (id, i) { return id === deseado[i]; });
+    var limite = tope ? estilo.indexOf(tope) : estilo.length;
+    var ultimo = estilo.indexOf(deseado[deseado.length - 1]);
+    if (igual && ultimo < limite) return;
+    deseado.forEach(function (id) { map.moveLayer(id, tope); });
   }
 
   function alternar(clave, visible) {
@@ -445,16 +588,16 @@
         var fe = escuelaEn(e.point);
         if (fe) { bloquearSeleccionManzana(); popupEscuela(fe); return; }
       }
-      // 1) Parque (tiene prioridad sobre colonia y manzana)
-      if (CAPAS.parques.visible && map.getLayer(CAPAS.parques.relleno)) {
-        var fp = map.queryRenderedFeatures(e.point, { layers: [CAPAS.parques.relleno] })[0];
-        if (fp) { bloquearSeleccionManzana(); popupParque(e, fp); return; }
-      }
-      // 2) Colonia (no en modo Radio, para no estorbar al trazar círculos)
-      var radio = (typeof modoClic !== "undefined" && modoClic === "radio");
-      if (CAPAS.colonias.visible && !radio && map.getLayer(CAPAS.colonias.relleno)) {
-        var fc = map.queryRenderedFeatures(e.point, { layers: [CAPAS.colonias.relleno] })[0];
-        if (fc) { bloquearSeleccionManzana(); popupColoniaInfo(e, fc); }
+      // 1) Parques y colonias: gana la que está encima según el orden elegido en el menú
+      for (var i = 0; i < ordenCapas.length; i++) {
+        var k = ordenCapas[i];
+        if (k === "parques" && CAPAS.parques.visible && map.getLayer(CAPAS.parques.relleno)) {
+          var fp = map.queryRenderedFeatures(e.point, { layers: [CAPAS.parques.relleno] })[0];
+          if (fp) { bloquearSeleccionManzana(); popupParque(e, fp); return; }
+        } else if (k === "colonias" && CAPAS.colonias.visible && !modoRadio && map.getLayer(CAPAS.colonias.relleno)) {
+          var fc = map.queryRenderedFeatures(e.point, { layers: [CAPAS.colonias.relleno] })[0];
+          if (fc) { bloquearSeleccionManzana(); popupColoniaInfo(e, fc); return; }
+        }
       }
     });
   }
