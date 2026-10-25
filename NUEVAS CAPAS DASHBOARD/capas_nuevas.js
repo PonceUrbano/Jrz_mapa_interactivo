@@ -4,6 +4,7 @@
 //   solo de esa colonia (calculada con las manzanas que caen dentro).
 // - Parques: relleno verde claro; clic = ventana del parque.
 // - Escuelas: puntos por nivel (preescolar, secundaria, superior); clic = ventana de la escuela.
+// - Transporte público: rutas (BRT-1/2/3 gruesas, resto en gris) y paradas; clic = ventana con las rutas o la parada.
 // Rutas: se prueba primero la carpeta "NUEVAS CAPAS DASHBOARD/" y luego la raíz.
 // =====================================================================
 (function () {
@@ -43,18 +44,31 @@
     color: "linear-gradient(135deg,#f2a900 0 33%,#d1495b 33% 66%,#6f3fa0 66%)",
     etiqueta: "Escuelas"
   };
+  // Transporte: UNA fila en el menú que controla rutas + paradas (dos archivos).
+  var COLORES_RUTA = { "BRT-1": "#e63946", "BRT-2": "#2a9d8f", "BRT-3": "#f4a261" };
+  var COLOR_RUTA_OTRA = "#94a3b8";
+  CAPAS.transporte = {
+    archivo: "transporte_rutas.geojson",
+    archivoParadas: "transporte_paradas.geojson",
+    fuente: "transporte-rutas-src",
+    fuenteParadas: "transporte-paradas-src",
+    visible: false,
+    color: "linear-gradient(135deg,#e63946 0 33%,#2a9d8f 33% 66%,#f4a261 66%)",
+    etiqueta: "Transporte público"
+  };
   var SEL = { fuente: "colonia-sel-src", linea: "colonia-sel-line" };
   // Orden de las capas de arriba (se ve encima) a abajo. El usuario lo cambia con las flechas del menú.
-  var ordenCapas = ["escuelas", "parques", "manzanas", "colonias"];
+  var ordenCapas = ["escuelas", "transporte", "parques", "manzanas", "colonias"];
   // Capas reales de MapLibre que pertenecen a cada grupo del menú.
   var GRUPOS = {
     manzanas: ["manzanas-fill", "manzanas-hit", "manzanas-linea"],
     colonias: ["colonias-fill"],
     parques:  ["parques-fill", "parques-line"],
-    escuelas: ["escuelas-pts"]
+    escuelas: ["escuelas-pts"],
+    transporte: ["transporte-rutas-otras", "transporte-rutas-brt", "transporte-paradas"]
   };
-  var datos = { colonias: null, parques: null, escuelas: null };
-  var cargando = { colonias: false, parques: false, escuelas: false };
+  var datos = { colonias: null, parques: null, escuelas: null, transporte: null };
+  var cargando = { colonias: false, parques: false, escuelas: false, transporte: false };
   var vacio = { type: "FeatureCollection", features: [] };
   var coloniaSel = null;      // feature (geometría completa) de la colonia seleccionada
   var popupColonia = null;
@@ -148,7 +162,7 @@
     apagarTodas.className = "btn-texto";
     apagarTodas.textContent = "Apagar todas";
     apagarTodas.addEventListener("click", function () {
-      ["chk-manzanas", "chk-colonias", "chk-parques", "chk-escuelas-capa"].forEach(function (id) {
+      ["chk-manzanas", "chk-colonias", "chk-parques", "chk-escuelas-capa", "chk-transporte"].forEach(function (id) {
         var c = document.getElementById(id);
         if (c && c.checked) c.click();
       });
@@ -171,9 +185,10 @@
       manzanas: labelManz,
       colonias: filaInterruptor("chk-colonias", CAPAS.colonias.etiqueta, CAPAS.colonias.color, CAPAS.colonias.visible),
       parques: filaInterruptor("chk-parques", CAPAS.parques.etiqueta, CAPAS.parques.color, CAPAS.parques.visible),
-      escuelas: filaInterruptor("chk-escuelas-capa", CAPAS.escuelas.etiqueta, CAPAS.escuelas.color, CAPAS.escuelas.visible)
+      escuelas: filaInterruptor("chk-escuelas-capa", CAPAS.escuelas.etiqueta, CAPAS.escuelas.color, CAPAS.escuelas.visible),
+      transporte: filaInterruptor("chk-transporte", CAPAS.transporte.etiqueta, CAPAS.transporte.color, CAPAS.transporte.visible)
     };
-    var nombres = { manzanas: "Manzanas", colonias: "Colonias", parques: "Parques y áreas verdes", escuelas: "Escuelas" };
+    var nombres = { manzanas: "Manzanas", colonias: "Colonias", parques: "Parques y áreas verdes", escuelas: "Escuelas", transporte: "Transporte público" };
     var iconoAsa = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
     var filas = {};
 
@@ -288,6 +303,9 @@
     document.getElementById("chk-escuelas-capa").addEventListener("change", function (e) {
       alternar("escuelas", e.target.checked);
     });
+    document.getElementById("chk-transporte").addEventListener("change", function (e) {
+      alternar("transporte", e.target.checked);
+    });
 
     // Al entrar, el menú se muestra abierto para invitar a elegir capas.
     panel.hidden = false;
@@ -329,11 +347,20 @@
     if (datos[clave] || cargando[clave]) return;
     cargando[clave] = true;
     if (window.mostrarEstado) window.mostrarEstado("Cargando " + CAPAS[clave].etiqueta.toLowerCase() + "...");
-    traer(CAPAS[clave].archivo).then(function (gj) {
+    var pedido = clave === "transporte"
+      ? Promise.all([traer(CAPAS.transporte.archivo), traer(CAPAS.transporte.archivoParadas)])
+      : traer(CAPAS[clave].archivo);
+    pedido.then(function (gj) {
       if (clave === "colonias") prepararColonias(gj);
       datos[clave] = gj;
-      var src = map.getSource(CAPAS[clave].fuente);
-      if (src) src.setData(gj);
+      if (clave === "transporte") {
+        var sr = map.getSource(CAPAS.transporte.fuente), sp = map.getSource(CAPAS.transporte.fuenteParadas);
+        if (sr) sr.setData(gj[0]);
+        if (sp) sp.setData(gj[1]);
+      } else {
+        var src = map.getSource(CAPAS[clave].fuente);
+        if (src) src.setData(gj);
+      }
       if (window.ocultarEstado) window.ocultarEstado();
     }).catch(function (err) {
       console.error("Capas nuevas:", err);
@@ -399,6 +426,46 @@
       }, antes);
     }
 
+    // Transporte: rutas (otras abajo, BRT encima) y paradas
+    var vTr = CAPAS.transporte.visible ? "visible" : "none";
+    var esBRT = ["in", ["get", "sistema"], ["literal", ["BRT-1", "BRT-2", "BRT-3"]]];
+    if (!map.getSource(CAPAS.transporte.fuente)) {
+      map.addSource(CAPAS.transporte.fuente, { type: "geojson", data: datos.transporte ? datos.transporte[0] : vacio });
+    }
+    if (!map.getSource(CAPAS.transporte.fuenteParadas)) {
+      map.addSource(CAPAS.transporte.fuenteParadas, { type: "geojson", data: datos.transporte ? datos.transporte[1] : vacio });
+    }
+    if (!map.getLayer("transporte-rutas-otras")) {
+      map.addLayer({
+        id: "transporte-rutas-otras", type: "line", source: CAPAS.transporte.fuente,
+        filter: ["!", esBRT],
+        layout: { visibility: vTr, "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": COLOR_RUTA_OTRA, "line-opacity": 0.75,
+                 "line-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 16, 3] }
+      }, antes);
+    }
+    if (!map.getLayer("transporte-rutas-brt")) {
+      map.addLayer({
+        id: "transporte-rutas-brt", type: "line", source: CAPAS.transporte.fuente,
+        filter: esBRT,
+        layout: { visibility: vTr, "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": ["match", ["get", "sistema"],
+                   "BRT-1", COLORES_RUTA["BRT-1"], "BRT-2", COLORES_RUTA["BRT-2"], "BRT-3", COLORES_RUTA["BRT-3"], COLOR_RUTA_OTRA],
+                 "line-opacity": 0.95,
+                 "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2.5, 16, 7] }
+      }, antes);
+    }
+    if (!map.getLayer("transporte-paradas")) {
+      map.addLayer({
+        id: "transporte-paradas", type: "circle", source: CAPAS.transporte.fuenteParadas, minzoom: 11,
+        layout: { visibility: vTr },
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 2.5, 16, 6],
+          "circle-color": "#ffffff", "circle-stroke-color": "#1b2030", "circle-stroke-width": 1.8
+        }
+      }, antes);
+    }
+
     // Resalte de la colonia seleccionada (solo esa lleva contorno)
     if (!map.getSource(SEL.fuente)) {
       map.addSource(SEL.fuente, { type: "geojson", data: coloniaSel ? { type: "FeatureCollection", features: [coloniaSel] } : vacio });
@@ -436,7 +503,7 @@
   function alternar(clave, visible) {
     CAPAS[clave].visible = visible;
     var v = visible ? "visible" : "none";
-    [CAPAS[clave].relleno, CAPAS[clave].linea].forEach(function (id) {
+    (GRUPOS[clave] || [CAPAS[clave].relleno, CAPAS[clave].linea]).forEach(function (id) {
       if (id && map.getLayer(id)) map.setLayoutProperty(id, "visibility", v);
     });
     if (visible) cargar(clave);
@@ -531,6 +598,54 @@
     return map.queryRenderedFeatures(caja, { layers: [CAPAS.escuelas.relleno] })[0] || null;
   }
 
+  // Paradas (±6 px) y rutas (±5 px) cerca del clic.
+  function transporteEn(punto) {
+    if (!CAPAS.transporte.visible) return null;
+    var caja = function (r) { return [[punto.x - r, punto.y - r], [punto.x + r, punto.y + r]]; };
+    if (map.getLayer("transporte-paradas")) {
+      var fp = map.queryRenderedFeatures(caja(6), { layers: ["transporte-paradas"] })[0];
+      if (fp) return { tipo: "parada", f: fp };
+    }
+    var capas = ["transporte-rutas-brt", "transporte-rutas-otras"].filter(function (id) { return map.getLayer(id); });
+    if (!capas.length) return null;
+    var fr = map.queryRenderedFeatures(caja(5), { layers: capas });
+    return fr.length ? { tipo: "ruta", fs: fr } : null;
+  }
+
+  function popupParada(f) {
+    var p = f.properties || {};
+    var html = "<h4><i style=\"background:#ffffff\"></i>" + esc(p.nombre || "Parada") + "</h4><dl>" +
+      "<dt>Líneas</dt><dd>" + esc(p.lineas || "Sin dato") + "</dd>" +
+      (p.red ? "<dt>Red</dt><dd>" + esc(p.red) + "</dd>" : "") + "</dl>";
+    new maplibregl.Popup({ className: "popup-capa", maxWidth: "300px", closeOnClick: true })
+      .setLngLat(f.geometry.coordinates).setHTML(html).addTo(map);
+  }
+
+  // Varias rutas comparten calle: se listan todas las que pasan por donde se hizo clic.
+  function popupRutas(e, fs) {
+    var vistos = {}, lista = [];
+    fs.forEach(function (f) {
+      var p = f.properties || {};
+      var id = (p.clave || p.titulo) + "|" + (p.sentido || "");
+      if (vistos[id]) return;
+      vistos[id] = true;
+      lista.push(p);
+    });
+    var mostrar = lista.slice(0, 10);
+    var filas = mostrar.map(function (p) {
+      var c = COLORES_RUTA[p.sistema] || COLOR_RUTA_OTRA;
+      return '<dt><i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:' + c + '"></i>' +
+        esc(p.titulo || "Ruta") + "</dt><dd>" + esc(p.detalle || "") +
+        (p.sentido ? " · " + esc(p.sentido) : "") +
+        (p.km ? " · " + num(p.km, 1) + " km" : "") + "</dd>";
+    }).join("");
+    var extra = lista.length > mostrar.length ? '<p class="nota">y ' + (lista.length - mostrar.length) + " más…</p>" : "";
+    var uni = mostrar.length === 1 && mostrar[0].unidad ? '<p class="nota">Unidad: ' + esc(mostrar[0].unidad) + "</p>" : "";
+    var html = "<h4>" + (lista.length === 1 ? "Ruta de transporte" : lista.length + " rutas aquí") + "</h4><dl>" + filas + "</dl>" + extra + uni;
+    new maplibregl.Popup({ className: "popup-capa", maxWidth: "320px", closeOnClick: true })
+      .setLngLat(e.lngLat).setHTML(html).addTo(map);
+  }
+
   function popupColoniaInfo(e, f) {
     var p = f.properties || {};
     // La geometría que devuelve el mapa viene recortada por teselas: usamos la original completa.
@@ -574,7 +689,7 @@
   function activarClics() {
     var cursorEscuela = false;
     map.on("mousemove", function (e) {
-      var sobre = !!escuelaEn(e.point);
+      var sobre = !!escuelaEn(e.point) || !!transporteEn(e.point);
       if (sobre !== cursorEscuela) {
         cursorEscuela = sobre;
         map.getCanvas().style.cursor = sobre ? "pointer" : "";
@@ -594,6 +709,13 @@
         if (k === "parques" && CAPAS.parques.visible && map.getLayer(CAPAS.parques.relleno)) {
           var fp = map.queryRenderedFeatures(e.point, { layers: [CAPAS.parques.relleno] })[0];
           if (fp) { bloquearSeleccionManzana(); popupParque(e, fp); return; }
+        } else if (k === "transporte" && !modoRadio) {
+          var ft = transporteEn(e.point);
+          if (ft) {
+            bloquearSeleccionManzana();
+            if (ft.tipo === "parada") popupParada(ft.f); else popupRutas(e, ft.fs);
+            return;
+          }
         } else if (k === "colonias" && CAPAS.colonias.visible && !modoRadio && map.getLayer(CAPAS.colonias.relleno)) {
           var fc = map.queryRenderedFeatures(e.point, { layers: [CAPAS.colonias.relleno] })[0];
           if (fc) { bloquearSeleccionManzana(); popupColoniaInfo(e, fc); return; }
