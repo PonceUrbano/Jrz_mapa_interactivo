@@ -283,6 +283,8 @@
     #mode-indicator { font-size:11px; padding:7px 12px; }
     #panel-analisis-der { top:auto; left:12px; right:12px; bottom:56px; width:auto; max-width:none; max-height:46%; }
   }
+  .puntos-escuelas { display:inline-flex; gap:3px; }
+  .puntos-escuelas i { width:9px; height:9px; border-radius:50%; border:1px solid #fff; box-shadow:0 0 0 1px var(--linea-fuerte); }
 </style>
 </head>
 <body>
@@ -380,6 +382,12 @@
         <input type="checkbox" id="chk-manzanas" checked />
         <span class="pista"></span>
         Manzanas
+      </label>
+      <label class="interruptor" title="Preescolar (amarillo), secundaria (rojo), superior (morado)">
+        <input type="checkbox" id="chk-escuelas" checked />
+        <span class="pista"></span>
+        Escuelas
+        <span class="puntos-escuelas" aria-hidden="true"><i style="background:#f2a900"></i><i style="background:#d1495b"></i><i style="background:#6f3fa0"></i></span>
       </label>
     </div>
 
@@ -1151,7 +1159,10 @@ map.on("load", async () => {
   map.on("click", (e) => {
     if (Date.now() - tsFinAsa < 400) return; // ignora el clic al soltar el punto
     if (modoClic === "radio") ejecutarAnalisisEspacial(e.lngLat);
-    else if (modoClic === "manzana") seleccionarManzana(e.point);
+    else if (modoClic === "manzana") {
+      if (map.getLayer("escuelas-puntos") && map.queryRenderedFeatures(e.point, { layers: ["escuelas-puntos"] }).length) return;
+      seleccionarManzana(e.point);
+    }
   });
 
   document.getElementById("modo-manzana").addEventListener("click", () => cambiarModo(modoClic === "manzana" ? null : "manzana"));
@@ -1285,6 +1296,7 @@ map.on("load", async () => {
 })();
 </script>
 
+   <script src="escuelas.js"></script>
    <script src="NUEVAS%20CAPAS%20DASHBOARD/capas_nuevas.js"></script>
 
 </body>

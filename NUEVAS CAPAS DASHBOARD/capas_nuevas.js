@@ -1,8 +1,9 @@
 // =====================================================================
-// CAPAS NUEVAS: Manzanas, Colonias y Parques dentro de un menú "Capas".
+// CAPAS NUEVAS: Manzanas, Colonias, Parques y Escuelas dentro de un menú "Capas".
 // - Colonias: cada una con un color distinto, sin contorno; clic = información
 //   solo de esa colonia (calculada con las manzanas que caen dentro).
 // - Parques: relleno verde claro; clic = ventana del parque.
+// - Escuelas: puntos por nivel (preescolar, secundaria, superior); clic = ventana de la escuela.
 // Rutas: se prueba primero la carpeta "NUEVAS CAPAS DASHBOARD/" y luego la raíz.
 // =====================================================================
 (function () {
@@ -29,9 +30,22 @@
       etiqueta: "Parques y áreas verdes"
     }
   };
+  var NIVELES = {
+    PREESCOLAR: { nombre: "Preescolar", color: "#f2a900" },
+    SECUNDARIA: { nombre: "Secundaria", color: "#d1495b" },
+    SUPERIOR:   { nombre: "Superior",   color: "#6f3fa0" }
+  };
+  CAPAS.escuelas = {
+    archivo: "escuelas_2025-2026.geojson",
+    fuente: "escuelas-src",
+    relleno: "escuelas-pts",
+    visible: true,
+    color: "linear-gradient(135deg,#f2a900 0 33%,#d1495b 33% 66%,#6f3fa0 66%)",
+    etiqueta: "Escuelas"
+  };
   var SEL = { fuente: "colonia-sel-src", linea: "colonia-sel-line" };
-  var datos = { colonias: null, parques: null };
-  var cargando = { colonias: false, parques: false };
+  var datos = { colonias: null, parques: null, escuelas: null };
+  var cargando = { colonias: false, parques: false, escuelas: false };
   var vacio = { type: "FeatureCollection", features: [] };
   var coloniaSel = null;      // feature (geometría completa) de la colonia seleccionada
   var popupColonia = null;
@@ -88,6 +102,10 @@
     var barra = document.getElementById("control-estilos");
     if (!barra) return;
 
+    // Si quedó el interruptor suelto de "Escuelas" de una versión anterior, se quita.
+    var suelto = document.getElementById("chk-escuelas");
+    if (suelto && suelto.closest("label")) suelto.closest("label").remove();
+
     var wrap = document.createElement("div");
     wrap.className = "capas-wrap";
     wrap.innerHTML =
@@ -108,6 +126,7 @@
     }
     panel.appendChild(filaInterruptor("chk-colonias", CAPAS.colonias.etiqueta, CAPAS.colonias.color, CAPAS.colonias.visible));
     panel.appendChild(filaInterruptor("chk-parques", CAPAS.parques.etiqueta, CAPAS.parques.color, CAPAS.parques.visible));
+    panel.appendChild(filaInterruptor("chk-escuelas-capa", CAPAS.escuelas.etiqueta, CAPAS.escuelas.color, CAPAS.escuelas.visible));
     barra.appendChild(wrap);
 
     var btn = wrap.querySelector("#btn-capas");
@@ -128,6 +147,9 @@
     });
     document.getElementById("chk-parques").addEventListener("change", function (e) {
       alternar("parques", e.target.checked);
+    });
+    document.getElementById("chk-escuelas-capa").addEventListener("change", function (e) {
+      alternar("escuelas", e.target.checked);
     });
   }
 
@@ -217,6 +239,25 @@
       }, antes);
     }
 
+    // Escuelas: puntos coloreados por nivel
+    if (!map.getSource(CAPAS.escuelas.fuente)) {
+      map.addSource(CAPAS.escuelas.fuente, { type: "geojson", data: datos.escuelas || vacio });
+    }
+    if (!map.getLayer(CAPAS.escuelas.relleno)) {
+      map.addLayer({
+        id: CAPAS.escuelas.relleno, type: "circle", source: CAPAS.escuelas.fuente,
+        layout: { visibility: CAPAS.escuelas.visible ? "visible" : "none" },
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 2.5, 14, 5, 17, 8],
+          "circle-color": ["match", ["get", "NIVEL"],
+            "PREESCOLAR", NIVELES.PREESCOLAR.color, "SECUNDARIA", NIVELES.SECUNDARIA.color,
+            "SUPERIOR", NIVELES.SUPERIOR.color, "#888888"],
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 1.2
+        }
+      }, antes);
+    }
+
     // Resalte de la colonia seleccionada (solo esa lleva contorno)
     if (!map.getSource(SEL.fuente)) {
       map.addSource(SEL.fuente, { type: "geojson", data: coloniaSel ? { type: "FeatureCollection", features: [coloniaSel] } : vacio });
@@ -230,7 +271,7 @@
     ordenar();
   }
 
-  // Orden: colonias (abajo) < manzanas < parques < colonia seleccionada < radio/selección.
+  // Orden: colonias (abajo) < manzanas < parques < colonia seleccionada < escuelas < radio/selección.
   function ordenar() {
     var capas = function () { return map.getStyle().layers.map(function (l) { return l.id; }); };
     var ids = capas();
@@ -241,10 +282,10 @@
       ids = capas();
     }
     var tope = pos("circulo-layer-fill") >= 0 ? "circulo-layer-fill" : undefined;
-    var arriba = [CAPAS.parques.relleno, CAPAS.parques.linea, SEL.linea].filter(function (id) { return pos(id) >= 0; });
+    var arriba = [CAPAS.parques.relleno, CAPAS.parques.linea, SEL.linea, CAPAS.escuelas.relleno].filter(function (id) { return pos(id) >= 0; });
     var ref = pos("manzanas-linea");
-    var mal = arriba.some(function (id) {
-      return (ref >= 0 && pos(id) < ref) || (tope && pos(id) > pos(tope));
+    var mal = arriba.some(function (id, i) {
+      return (ref >= 0 && pos(id) < ref) || (tope && pos(id) > pos(tope)) || (i > 0 && pos(id) < pos(arriba[i - 1]));
     });
     if (mal) arriba.forEach(function (id) { map.moveLayer(id, tope); });
   }
@@ -321,6 +362,32 @@
       .setLngLat(e.lngLat).setHTML(html).addTo(map);
   }
 
+  function popupEscuela(f) {
+    var p = f.properties || {};
+    var nivel = NIVELES[p.NIVEL] || { nombre: p.NIVEL || "Sin dato", color: "#888888" };
+    var tiene = function (v) { return v !== null && v !== undefined && v !== "" && isFinite(Number(v)); };
+    var filas = "<dt>Nivel</dt><dd>" + esc(nivel.nombre) + "</dd>" +
+      "<dt>Turno</dt><dd>" + esc(p.Turno ? String(p.Turno).toLowerCase() : "Sin dato") + "</dd>" +
+      (p.MODALIDAD ? "<dt>Modalidad</dt><dd>" + esc(p.MODALIDAD) + "</dd>" : "") +
+      "<dt>Dirección</dt><dd>" + esc(p.DIRECCION || "Sin dato") + "</dd>";
+    if (tiene(p.TALUMNOS)) {
+      filas += "<dt>Alumnos</dt><dd>" + num(p.TALUMNOS) + "</dd>" +
+        "<dt>Mujeres</dt><dd>" + num(p.TAMUJERES) + "</dd>" +
+        "<dt>Hombres</dt><dd>" + num(p.TAHOMBRES) + "</dd>";
+    }
+    if (p.CLAVE) filas += "<dt>Clave</dt><dd>" + esc(p.CLAVE) + "</dd>";
+    var html = '<h4><i style="background:' + nivel.color + '"></i>' + esc(p.NOMBRE || "Sin nombre") + "</h4><dl>" + filas + "</dl>";
+    new maplibregl.Popup({ className: "popup-capa", maxWidth: "300px", closeOnClick: true })
+      .setLngLat(f.geometry.coordinates).setHTML(html).addTo(map);
+  }
+
+  // Los puntos son pequeños: se busca en un cuadro de ±6 px alrededor del clic.
+  function escuelaEn(punto) {
+    if (!CAPAS.escuelas.visible || !map.getLayer(CAPAS.escuelas.relleno)) return null;
+    var caja = [[punto.x - 6, punto.y - 6], [punto.x + 6, punto.y + 6]];
+    return map.queryRenderedFeatures(caja, { layers: [CAPAS.escuelas.relleno] })[0] || null;
+  }
+
   function popupColoniaInfo(e, f) {
     var p = f.properties || {};
     // La geometría que devuelve el mapa viene recortada por teselas: usamos la original completa.
@@ -362,7 +429,22 @@
   }
 
   function activarClics() {
+    var cursorEscuela = false;
+    map.on("mousemove", function (e) {
+      var sobre = !!escuelaEn(e.point);
+      if (sobre !== cursorEscuela) {
+        cursorEscuela = sobre;
+        map.getCanvas().style.cursor = sobre ? "pointer" : "";
+      }
+    });
+
     map.on("click", function (e) {
+      // 0) Escuela (no en modo Radio, para no estorbar al trazar círculos)
+      var modoRadio = (typeof modoClic !== "undefined" && modoClic === "radio");
+      if (!modoRadio) {
+        var fe = escuelaEn(e.point);
+        if (fe) { bloquearSeleccionManzana(); popupEscuela(fe); return; }
+      }
       // 1) Parque (tiene prioridad sobre colonia y manzana)
       if (CAPAS.parques.visible && map.getLayer(CAPAS.parques.relleno)) {
         var fp = map.queryRenderedFeatures(e.point, { layers: [CAPAS.parques.relleno] })[0];
